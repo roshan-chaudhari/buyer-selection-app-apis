@@ -1,0 +1,47 @@
+{
+  "plmColorwaysMap": {},
+  "sortedGroupedStyles": [
+    {
+      "styleMaterialNumber": "A10001",
+      "styleMaterialName": "Lewis Shirt Floral Recycled Polyester",
+      "annotatedImage": null,
+      "selectionCondition": "As-Is",
+      "items": [
+        {
+          "id": 2,
+          "projectId": 1,
+          "styleId": 449,
+          "colorId": 325,
+          "colorStatusId": 0,
+          "styleMaterialNumber": "A10001",
+          "styleMaterialName": "Lewis Shirt Floral Recycled Polyester",
+          "colorway": "Saffron",
+          "colorwayStatus": "Pending",
+          "selectionCondition": "As-Is",
+          "sampleDue": "2026-07-01T18:30:00.000Z",
+          "buyerComments": "",
+          "internalComments": "",
+          "annotatedImage": null,
+          "createdDate": "2026-07-02T10:19:37.000Z"
+        },
+        {
+          "id": 3,
+          "projectId": 1,
+          "styleId": 449,
+          "colorId": 326,
+          "colorStatusId": 0,
+          "styleMaterialNumber": "A10001",
+          "styleMaterialName": "Lewis Shirt Floral Recycled Polyester",
+          "colorway": "Biscay Green",
+          "colorwayStatus": "Pending",
+          "selectionCondition": "As-Is",
+          "sampleDue": "2026-07-01T18:30:00.000Z",
+          "buyerComments": "",
+          "internalComments": "",
+          "annotatedImage": null,
+          "createdDate": "2026-07-02T10:24:38.000Z"
+        }
+      ]
+    }
+  ]
+}
