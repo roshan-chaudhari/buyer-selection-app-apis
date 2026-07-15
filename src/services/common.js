@@ -44,7 +44,8 @@ function mapProjectRow(r, items = []) {
   return {
     id: r.Id,
     projectName: r.ProjectName,
-    section: fromDbSection(r.ProjectType),
+    section: r.IsLocked === 1 ? 'Syncro PLM' : fromDbSection(r.ProjectType),
+    isLocked: r.IsLocked === 1,
     buyerId: r.BuyerId || null,
     buyerName: r.BuyerName,
     description: r.Description || '',

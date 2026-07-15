@@ -7,5 +7,10 @@ const router = express.Router();
 // Register routes
 router.use('/projects', projectRoutes);
 router.use('/odata2', odata2Routes);
+router.use('/job', odata2Routes);
+router.use('/library', odata2Routes);  // PLM library service (e.g. idgenerator)
+router.use('/pdm', odata2Routes);
+router.use('/document', odata2Routes);
+
 
 module.exports = router;

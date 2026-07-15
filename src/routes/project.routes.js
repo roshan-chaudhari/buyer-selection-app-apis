@@ -26,6 +26,9 @@ router.get('/:id', projectController.getProjectById);
 // UPDATE project by ID
 router.put('/:id', projectController.updateProject);
 
+// LOCK project by ID (makes it read-only for all users)
+router.patch('/:id/lock', projectController.lockProject);
+
 // DELETE project by ID
 router.delete('/:id', projectController.deleteProject);
 

@@ -11,6 +11,15 @@ class ItemService {
     return rows.map(mapItemRow);
   }
 
+  async getItemById(itemId) {
+    const [rows] = await db.query(
+      `SELECT Id, ProjectId FROM buyerprojectitems WHERE Id = ?`,
+      [itemId]
+    );
+    if (rows.length === 0) return null;
+    return { id: rows[0].Id, projectId: rows[0].ProjectId };
+  }
+
   async addItemToProject(projectId, itemData) {
     const { styleId, colorId, colorStatusId, styleMaterialNumber, styleMaterialName, colorway, colorwayStatus, selectionCondition, sampleDue, buyerComments, internalComments } = itemData;
     const connection = await db.getConnection();
@@ -169,11 +178,12 @@ class ItemService {
           if (existingRowForColor) {
             await connection.query(
               `UPDATE buyerprojectitems 
-               SET StyleId = ?, ColorId = ?, StyleMaterialNumber = ?, StyleMaterialName = ?, Colorway = ?, ColorwayStatus = ?, SelectionCondition = ?, SampleDue = ?, AnnotatedImage = ? 
+               SET StyleId = ?, ColorId = ?, ColorStatusId = ?, StyleMaterialNumber = ?, StyleMaterialName = ?, Colorway = ?, ColorwayStatus = ?, SelectionCondition = ?, SampleDue = ?, AnnotatedImage = ? 
                WHERE Id = ?`,
               [
                 styleId || 0,
                 colorIdVal,
+                colorStatusId || 0,
                 styleMaterialNumber || null,
                 styleMaterialName || null,
                 color,
@@ -198,7 +208,7 @@ class ItemService {
                 styleMaterialNumber || null,
                 styleMaterialName || null,
                 color,
-                'Pending',
+                'Selected',
                 selectionCondition || null,
                 parseDate(sampleDue),
                 '',

@@ -3,7 +3,7 @@ const { db, toDbSection, parseDate, mapProjectRow, mapItemRow } = require('./com
 class ProjectService {
   async getAllProjects() {
     const query = `
-      SELECT Id, ProjectType, ProjectName, BuyerId, BuyerName, Description, SelectionDate, Items, UserId, UserName, LastUpdated, PlmProjectName, PlmBuyerField, PlmSelectionDate, PlmLastModified, CreatedDate
+      SELECT Id, ProjectType, IsLocked, ProjectName, BuyerId, BuyerName, Description, SelectionDate, Items, UserId, UserName, LastUpdated, PlmProjectName, PlmBuyerField, PlmSelectionDate, PlmLastModified, CreatedDate
       FROM buyerprojects 
       WHERE IsDelete = 0
       ORDER BY LastUpdated DESC;
@@ -16,7 +16,7 @@ class ProjectService {
 
   async getProjectById(id) {
     const query = `
-      SELECT Id, ProjectType, ProjectName, BuyerName, Description, SelectionDate, Items, UserId, UserName, LastUpdated, PlmProjectName, PlmBuyerField, PlmSelectionDate, PlmLastModified, CreatedDate
+      SELECT Id, ProjectType, IsLocked, ProjectName, BuyerName, Description, SelectionDate, Items, UserId, UserName, LastUpdated, PlmProjectName, PlmBuyerField, PlmSelectionDate, PlmLastModified, CreatedDate
       FROM buyerprojects 
       WHERE Id = ? AND IsDelete = 0;
     `;
@@ -37,7 +37,7 @@ class ProjectService {
 
   async getProjectByName(projectName) {
     const query = `
-      SELECT Id, ProjectType, ProjectName, BuyerName, Description, SelectionDate, Items, UserId, UserName, LastUpdated, PlmProjectName, PlmBuyerField, PlmSelectionDate, PlmLastModified, CreatedDate
+      SELECT Id, ProjectType, IsLocked, ProjectName, BuyerName, Description, SelectionDate, Items, UserId, UserName, LastUpdated, PlmProjectName, PlmBuyerField, PlmSelectionDate, PlmLastModified, CreatedDate
       FROM buyerprojects 
       WHERE ProjectName = ? AND IsDelete = 0;
     `;
@@ -231,6 +231,22 @@ class ProjectService {
     console.log(`[AUDIT] Deleting project ID ${id} by User "${safeUserName}" (ID: ${safeUserId})`);
     const [result] = await db.query('UPDATE buyerprojects SET IsDelete = 1 WHERE Id = ? AND IsDelete = 0', [id]);
     return result.affectedRows > 0;
+  }
+
+  async lockProject(id) {
+    const [result] = await db.query(
+      "UPDATE buyerprojects SET IsLocked = 1, ProjectType = 'SYNCRO PLM Project' WHERE Id = ? AND IsDelete = 0",
+      [id]
+    );
+    return result.affectedRows > 0;
+  }
+
+  async isProjectLocked(id) {
+    const [rows] = await db.query(
+      'SELECT IsLocked FROM buyerprojects WHERE Id = ? AND IsDelete = 0',
+      [id]
+    );
+    return rows.length > 0 && rows[0].IsLocked === 1;
   }
 }
 

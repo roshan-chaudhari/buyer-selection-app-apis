@@ -133,6 +133,17 @@ const deleteProject = asyncHandler(async (req, res) => {
   return res.ok('Project deleted successfully');
 });
 
+const lockProject = asyncHandler(async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.fail('Invalid project ID', 400);
+
+  const success = await projectService.lockProject(id);
+  if (!success) return res.fail(`Project with ID ${id} not found`, 404);
+
+  const updatedProject = await projectService.getProjectById(id);
+  return res.ok('Project locked successfully', updatedProject);
+});
+
 // ── Item Endpoints ─────────────────────────────────────────────────────────
 
 const getItemsForProject = asyncHandler(async (req, res) => {
@@ -150,6 +161,9 @@ const addItemToProject = asyncHandler(async (req, res) => {
   const projectId = parseId(req.params.projectId);
   if (!projectId) return res.fail('Invalid project ID', 400);
 
+  const locked = await projectService.isProjectLocked(projectId);
+  if (locked) return res.fail('This project is locked and cannot be modified', 403);
+
   const itemData = req.body;
 
   const insertedItem = await itemService.addItemToProject(projectId, itemData);
@@ -164,6 +178,13 @@ const updateProjectItem = asyncHandler(async (req, res) => {
 
   const itemData = req.body;
 
+  // Guard: check if the parent project is locked
+  const existingItem = await itemService.getItemById(itemId);
+  if (existingItem) {
+    const locked = await projectService.isProjectLocked(existingItem.projectId);
+    if (locked) return res.fail('This project is locked and cannot be modified', 403);
+  }
+
   const updatedItem = await itemService.updateItem(itemId, itemData);
   if (!updatedItem) return res.fail(`Item with ID ${itemId} not found`, 404);
 
@@ -174,6 +195,13 @@ const deleteProjectItem = asyncHandler(async (req, res) => {
   const itemId = parseId(req.params.itemId);
   if (!itemId) return res.fail('Invalid item ID', 400);
 
+  // Guard: check if the parent project is locked
+  const existingItem = await itemService.getItemById(itemId);
+  if (existingItem) {
+    const locked = await projectService.isProjectLocked(existingItem.projectId);
+    if (locked) return res.fail('This project is locked and cannot be modified', 403);
+  }
+
   const success = await itemService.deleteItem(itemId);
   if (!success) return res.fail(`Item with ID ${itemId} not found`, 404);
 
@@ -182,12 +210,12 @@ const deleteProjectItem = asyncHandler(async (req, res) => {
 
 const proxyImage = asyncHandler(async (req, res) => {
   const imageUrl = req.query.url;
-  if (!imageUrl) return res.fail('URL is required', 400);
+  if (!imageUrl) return res.status(400).send('URL is required');
 
   try {
     const response = await fetch(imageUrl);
     if (!response.ok) {
-      return res.fail(`Failed to fetch image from S3: ${response.statusText}`, response.status);
+      return res.status(response.status).send(`Failed to fetch image from S3: ${response.statusText}`);
     }
     const arrayBuffer = await response.arrayBuffer();
     let contentType = response.headers.get('content-type') || 'image/jpeg';
@@ -211,12 +239,12 @@ const proxyImage = asyncHandler(async (req, res) => {
     }
 
     const buffer = Buffer.from(arrayBuffer);
-    const base64 = buffer.toString('base64');
-    const dataUrl = `data:${contentType};base64,${base64}`;
-    return res.ok('Image proxied successfully', { dataUrl });
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    return res.send(buffer);
   } catch (err) {
     console.error('Failed to proxy image:', err.message);
-    return res.fail(`Failed to load image: ${err.message}`, 500);
+    return res.status(500).send(`Failed to load image: ${err.message}`);
   }
 });
 
@@ -226,6 +254,7 @@ module.exports = {
   createProject,
   updateProject,
   deleteProject,
+  lockProject,
   getItemsForProject,
   addItemToProject,
   updateProjectItem,

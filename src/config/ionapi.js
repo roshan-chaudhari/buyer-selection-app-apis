@@ -54,8 +54,8 @@ function getIonapiConfig() {
   // 3. Fallback to default/environment configurations if no file is found
   console.warn('[IONAPI] No .ionapi file found. Using default environment configuration.');
   return {
-    ti: process.env.INFOR_TI || 'PTEXSOLUTIONS_DEM',
-    iu: process.env.INFOR_IU || 'https://mingle-ionapi.eu1.inforcloudsuite.com',
+    ti: process.env.INFOR_TI,
+    iu: process.env.INFOR_IU,
   };
 }
 
