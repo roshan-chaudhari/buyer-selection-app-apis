@@ -10,7 +10,7 @@ const { errorHandler } = require('./middleware/errorHandler');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Enable CORS — restrict to known frontend origin
+// Enable CORS — restrict to known frontend origin (loaded from environment)
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
@@ -26,6 +26,47 @@ app.use(requestLogger);
 
 // Attach res.ok / res.created / res.fail to every response
 app.use(responseHandler);
+
+// Dynamic CORS Proxy endpoint to mirror Vite's dev-server proxy in production
+app.all('/cors-proxy/*splat', async (req, res) => {
+  const targetUrl = req.headers['x-target-url'];
+  if (!targetUrl) {
+    return res.status(400).send('Missing x-target-url header');
+  }
+
+  try {
+    const headers = {};
+    for (const [key, value] of Object.entries(req.headers)) {
+      if (!['host', 'x-target-url', 'connection', 'origin', 'referer'].includes(key.toLowerCase())) {
+        headers[key] = value;
+      }
+    }
+
+    const fetchOptions = {
+      method: req.method,
+      headers: headers,
+    };
+
+    if (req.method !== 'GET' && req.method !== 'HEAD' && req.body) {
+      fetchOptions.body = typeof req.body === 'object' ? JSON.stringify(req.body) : req.body;
+    }
+
+    console.log(`[CORS PROXY] Routing ${req.method} --> ${targetUrl}`);
+    const response = await fetch(targetUrl, fetchOptions);
+    const contentType = response.headers.get('content-type');
+    const status = response.status;
+
+    const buffer = await response.arrayBuffer();
+    
+    if (contentType) {
+      res.setHeader('content-type', contentType);
+    }
+    res.status(status).send(Buffer.from(buffer));
+  } catch (err) {
+    console.error('[CORS PROXY ERROR]:', err.message);
+    res.status(500).send(`CORS proxy failed: ${err.message}`);
+  }
+});
 
 // Mount combined API routes
 const apiRoutes = require('./routes');
