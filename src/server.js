@@ -67,7 +67,9 @@ app.all('/cors-proxy/*splat', async (req, res) => {
     res.status(500).send(`CORS proxy failed: ${err.message}`);
   }
 });
-
+app.get('/health', (req, res) => {
+  res.ok('ok');
+})
 // Mount combined API routes
 const apiRoutes = require('./routes');
 app.use('/api', apiRoutes);
