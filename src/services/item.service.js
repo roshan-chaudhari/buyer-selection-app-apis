@@ -3,7 +3,7 @@ const { db, parseDate, mapItemRow } = require('./common');
 class ItemService {
   async getItemsByProjectId(projectId) {
     const query = `
-      SELECT Id, ProjectId, StyleId, ColorId, ColorStatusId, StyleMaterialNumber, StyleMaterialName, Colorway, ColorwayStatus, SelectionCondition, SampleDue, BuyerComments, InternalComments, AnnotatedImage, CreatedDate 
+      SELECT Id, ProjectId, StyleId, ColorId, ColorStatusId, StyleMaterialNumber, StyleMaterialName, ItemType, Colorway, ColorwayStatus, SelectionCondition, SampleDue, BuyerComments, InternalComments, AnnotatedImage, CreatedDate 
       FROM buyerprojectitems 
       WHERE ProjectId = ?;
     `;
@@ -21,7 +21,7 @@ class ItemService {
   }
 
   async addItemToProject(projectId, itemData) {
-    const { styleId, colorId, colorStatusId, styleMaterialNumber, styleMaterialName, colorway, colorwayStatus, selectionCondition, sampleDue, buyerComments, internalComments } = itemData;
+    const { styleId, colorId, colorStatusId, styleMaterialNumber, styleMaterialName, itemType, colorway, colorwayStatus, selectionCondition, sampleDue, buyerComments, internalComments } = itemData;
     const connection = await db.getConnection();
     try {
       await connection.beginTransaction();
@@ -47,8 +47,8 @@ class ItemService {
 
       const [result] = await connection.query(
         `INSERT INTO buyerprojectitems 
-         (ProjectId, StyleId, ColorId, ColorStatusId, StyleMaterialNumber, StyleMaterialName, Colorway, ColorwayStatus, SelectionCondition, SampleDue, BuyerComments, InternalComments, AnnotatedImage) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (ProjectId, StyleId, ColorId, ColorStatusId, StyleMaterialNumber, StyleMaterialName, ItemType, Colorway, ColorwayStatus, SelectionCondition, SampleDue, BuyerComments, InternalComments, AnnotatedImage) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           projectId,
           styleId || 0,
@@ -56,6 +56,7 @@ class ItemService {
           colorStatusId || 0,
           styleMaterialNumber || null,
           styleMaterialName || null,
+          itemType || 'Style',
           colorway || null,
           colorwayStatus || null,
           selectionCondition || null,
@@ -78,7 +79,7 @@ class ItemService {
       await connection.commit();
 
       const [inserted] = await db.query(
-        `SELECT Id, ProjectId, StyleId, ColorId, ColorStatusId, StyleMaterialNumber, StyleMaterialName, Colorway, ColorwayStatus, SelectionCondition, SampleDue, BuyerComments, InternalComments, AnnotatedImage, CreatedDate
+        `SELECT Id, ProjectId, StyleId, ColorId, ColorStatusId, StyleMaterialNumber, StyleMaterialName, ItemType, Colorway, ColorwayStatus, SelectionCondition, SampleDue, BuyerComments, InternalComments, AnnotatedImage, CreatedDate
          FROM buyerprojectitems WHERE Id = ?`,
         [itemId]
       );

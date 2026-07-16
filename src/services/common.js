@@ -29,6 +29,7 @@ function mapItemRow(item) {
     colorStatusId: item.ColorStatusId || 0,
     styleMaterialNumber: item.StyleMaterialNumber || '',
     styleMaterialName: item.StyleMaterialName || '',
+    itemType: item.ItemType || 'Style',
     colorway: item.Colorway || '',
     colorwayStatus: item.ColorwayStatus || '',
     selectionCondition: item.SelectionCondition || '',

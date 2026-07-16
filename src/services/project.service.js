@@ -25,7 +25,7 @@ class ProjectService {
     const r = rows[0];
 
     const [itemRows] = await db.query(
-      `SELECT Id, ProjectId, StyleId, ColorId, ColorStatusId, StyleMaterialNumber, StyleMaterialName, Colorway, ColorwayStatus, SelectionCondition, SampleDue, BuyerComments, InternalComments, AnnotatedImage, CreatedDate 
+      `SELECT Id, ProjectId, StyleId, ColorId, ColorStatusId, StyleMaterialNumber, StyleMaterialName, ItemType, Colorway, ColorwayStatus, SelectionCondition, SampleDue, BuyerComments, InternalComments, AnnotatedImage, CreatedDate 
        FROM buyerprojectitems 
        WHERE ProjectId = ?`,
       [id]
@@ -98,13 +98,14 @@ class ProjectService {
       if (itemsCount > 0) {
         const itemInsertQuery = `
           INSERT INTO buyerprojectitems 
-          (ProjectId, StyleMaterialNumber, StyleMaterialName, Colorway, ColorwayStatus, SelectionCondition, SampleDue, BuyerComments, InternalComments, AnnotatedImage) 
+          (ProjectId, StyleMaterialNumber, StyleMaterialName, ItemType, Colorway, ColorwayStatus, SelectionCondition, SampleDue, BuyerComments, InternalComments, AnnotatedImage) 
           VALUES ?
         `;
         const itemValues = items.map(item => [
           projectId,
           item.styleMaterialNumber || null,
           item.styleMaterialName || null,
+          item.itemType || 'Style',
           item.colorway || null,
           item.colorwayStatus || null,
           item.selectionCondition || null,
@@ -184,13 +185,14 @@ class ProjectService {
         if (items.length > 0) {
           const itemInsertQuery = `
             INSERT INTO buyerprojectitems 
-            (ProjectId, StyleMaterialNumber, StyleMaterialName, Colorway, ColorwayStatus, SelectionCondition, SampleDue, BuyerComments, InternalComments, AnnotatedImage) 
+            (ProjectId, StyleMaterialNumber, StyleMaterialName, ItemType, Colorway, ColorwayStatus, SelectionCondition, SampleDue, BuyerComments, InternalComments, AnnotatedImage) 
             VALUES ?
           `;
           const itemValues = items.map(item => [
             id,
             item.styleMaterialNumber || null,
             item.styleMaterialName || null,
+            item.itemType || 'Style',
             item.colorway || null,
             item.colorwayStatus || null,
             item.selectionCondition || null,
