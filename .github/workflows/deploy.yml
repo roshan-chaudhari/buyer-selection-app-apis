@@ -24,7 +24,6 @@ jobs:
       - name: Install Dependencies
         run: |
           npm ci
-
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
