@@ -89,7 +89,7 @@ app.use(responseHandler);
 //   }
 // });
 
-app.all(['/cors-proxy', '/cors-proxy/*'], async (req, res) => {
+app.all('/cors-proxy/*', async (req, res) => {
   try {
     let targetUrl = req.headers['x-target-url'];
 
