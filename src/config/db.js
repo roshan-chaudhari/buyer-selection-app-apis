@@ -1,16 +1,24 @@
-const mysql = require('mysql2/promise');
-require('dotenv').config();
+const mysql = require("mysql2/promise");
+require("dotenv").config();
 
-const sslConfig = (process.env.DB_SSL === 'true' || (process.env.DB_HOST && process.env.DB_HOST.includes('database.azure.com')))
-  ? { rejectUnauthorized: false }
-  : undefined;
+const sslConfig =
+  process.env.DB_SSL === "true" ||
+  (process.env.DB_HOST && process.env.DB_HOST.includes("database.azure.com"))
+    ? { rejectUnauthorized: false }
+    : undefined;
+
+console.log("DB_HOST =", process.env.DB_HOST);
+console.log("DB_PORT =", process.env.DB_PORT);
+console.log("DB_DATABASE =", process.env.DB_DATABASE);
+console.log("DB_USERNAME =", process.env.DB_USERNAME);
+
 
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || '127.0.0.1',
+  host: process.env.DB_HOST || "127.0.0.1",
   port: Number(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USERNAME || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_DATABASE || 'buyersectionapp',
+  user: process.env.DB_USERNAME || "root",
+  password: process.env.DB_PASSWORD || "",
+  database: process.env.DB_DATABASE || "buyersectionapp",
   ssl: sslConfig,
   waitForConnections: true,
   connectionLimit: 10,
@@ -23,10 +31,13 @@ const pool = mysql.createPool({
 (async () => {
   try {
     const connection = await pool.getConnection();
-    console.log('Database connected successfully.');
+    console.log("Database connected successfully.");
     connection.release();
   } catch (error) {
-    console.error('Database connection failed on startup. Using pool. (Make sure your local DB is running & configured):', error.message);
+    console.error(
+      "Database connection failed on startup. Using pool. (Make sure your local DB is running & configured):",
+      error.message,
+    );
   }
 })();
 
