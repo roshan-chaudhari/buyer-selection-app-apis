@@ -23,11 +23,17 @@ app.use(cors({
     "http://localhost:5173",
     "https://buyersectionapp-bkcrhth7fye0b9et.centralindia-01.azurewebsites.net"
   ],
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  credentials: true,
+  methods: ["GET","POST","PUT","DELETE","OPTIONS"],
   allowedHeaders: [
     "Content-Type",
     "Authorization",
-    "x-target-url"
+    "x-target-url",
+    "x-infor-url",
+    "x-infor-user",
+    "x-infor-tenantid",
+    "x-fplm-schema",
+    "x-fplm-client-version"
   ]
 }));
 
@@ -82,14 +88,16 @@ app.use(responseHandler);
 //   }
 // });
 
-app.all('/cors-proxy', async (req, res) => {
-  const targetUrl = req.headers['x-target-url'];
-
-  if (!targetUrl) {
-    return res.status(400).send('Missing x-target-url header');
-  }
-
+app.all('/cors-proxy/*', async (req, res) => {
   try {
+    let targetUrl = req.headers['x-target-url'];
+
+    // If no header is provided, build the target URL from the path
+    if (!targetUrl) {
+      const path = req.originalUrl.replace('/cors-proxy', '');
+      targetUrl = process.env.INFOR_BASE_URL + path;
+    }
+
     const headers = { ...req.headers };
 
     delete headers.host;
@@ -101,19 +109,17 @@ app.all('/cors-proxy', async (req, res) => {
 
     const options = {
       method: req.method,
-      headers,
+      headers
     };
 
     if (req.method !== 'GET' && req.method !== 'HEAD') {
-      if (
-        headers['content-type'] &&
-        headers['content-type'].includes('application/x-www-form-urlencoded')
-      ) {
-        options.body = new URLSearchParams(req.body).toString();
-      } else {
-        options.body = JSON.stringify(req.body);
-      }
+      options.body =
+        headers['content-type']?.includes('application/x-www-form-urlencoded')
+          ? new URLSearchParams(req.body).toString()
+          : JSON.stringify(req.body);
     }
+
+    console.log("Proxying:", targetUrl);
 
     const response = await fetch(targetUrl, options);
 
@@ -129,7 +135,6 @@ app.all('/cors-proxy', async (req, res) => {
 
   } catch (err) {
     console.error(err);
-
     res.status(500).send(err.message);
   }
 });
