@@ -91,6 +91,10 @@ app.use(responseHandler);
 // });
 
 app.all("/cors-proxy/*", async (req, res) => {
+  console.log("=== Proxy Hit ===");
+  console.log("Method:", req.method);
+  console.log("Target URL:", req.headers["x-target-url"]);
+  console.log("Body:", req.body);
   try {
     let targetUrl = req.headers["x-target-url"];
 
