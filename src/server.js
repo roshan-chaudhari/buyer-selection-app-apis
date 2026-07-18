@@ -127,7 +127,13 @@ app.all(['/cors-proxy', '/cors-proxy/*'], async (req, res) => {
     res.status(response.status);
 
     response.headers.forEach((value, key) => {
-      res.setHeader(key, value);
+      // fetch() automatically decompresses the response body, so we must strip the 
+      // original content-encoding header. Otherwise, the browser will try to decompress
+      // already-uncompressed data and throw ERR_CONTENT_DECODING_FAILED.
+      // We also strip content-length because the uncompressed size will differ.
+      if (key.toLowerCase() !== 'content-encoding' && key.toLowerCase() !== 'content-length') {
+        res.setHeader(key, value);
+      }
     });
 
     const buffer = Buffer.from(await response.arrayBuffer());
