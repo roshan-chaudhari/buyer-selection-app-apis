@@ -12,5 +12,11 @@ router.use('/library', odata2Routes);  // PLM library service (e.g. idgenerator)
 router.use('/pdm', odata2Routes);
 router.use('/document', odata2Routes);
 
+router.get('/config', (req, res) => {
+  res.json({
+    VITE_API_BASE_URL: process.env.VITE_API_BASE_URL || ''
+  });
+});
+
 
 module.exports = router;

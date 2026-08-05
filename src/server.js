@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config();
+require('./config/env');
 
 const { requestLogger } = require('./middleware/requestLogger');
 const { responseHandler } = require('./middleware/responseHandler');
@@ -18,11 +18,15 @@ const PORT = process.env.PORT || 5000;
 // }));
 
 
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+  : [
+      "http://localhost:5173",
+      "https://buyersectionapp-bkcrhth7fye0b9et.centralindia-01.azurewebsites.net"
+    ];
+
 app.use(cors({
-  origin: [
-    "http://localhost:5173",
-    "https://buyersectionapp-bkcrhth7fye0b9et.centralindia-01.azurewebsites.net"
-  ],
+  origin: "*",
   credentials: true,
   methods: ["GET","POST","PUT","DELETE","OPTIONS"],
   allowedHeaders: [
@@ -90,6 +94,7 @@ app.use(responseHandler);
 // });
 
 app.all(['/cors-proxy', '/cors-proxy/*'], async (req, res) => {
+  console.log("BACKEND CORS PROXY HIT:", req.method, req.originalUrl);
   try {
     let targetUrl = req.headers['x-target-url'];
 
