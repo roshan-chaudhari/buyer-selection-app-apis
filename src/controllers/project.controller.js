@@ -1,7 +1,7 @@
-const { projectService, itemService } = require('../services');
+﻿const { projectService, itemService, s3Service } = require('../services');
 const { asyncHandler } = require('../utils/asyncHandler');
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
  * Parses and validates a route param as a positive integer.
@@ -12,7 +12,7 @@ function parseId(value) {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
-// ── Controller ───────────────────────────────────────────────────────────────
+// ── Controller ────────────────────────────────────────────────────────────────
 
 const getAllProjects = asyncHandler(async (req, res) => {
   const projects = await projectService.getAllProjects();
@@ -144,7 +144,7 @@ const lockProject = asyncHandler(async (req, res) => {
   return res.ok('Project locked successfully', updatedProject);
 });
 
-// ── Item Endpoints ─────────────────────────────────────────────────────────
+// ── Item Endpoints ────────────────────────────────────────────────────────────
 
 const getItemsForProject = asyncHandler(async (req, res) => {
   const projectId = parseId(req.params.projectId);
@@ -208,14 +208,145 @@ const deleteProjectItem = asyncHandler(async (req, res) => {
   return res.ok('Item deleted successfully');
 });
 
+// ── S3 Image Upload & Retrieval & Delete Endpoints ─────────────────────────────
+
+const uploadImage = asyncHandler(async (req, res) => {
+  const { projectName, styleName, fileName, base64Data, itemId } = req.body;
+  let fileBuffer = null;
+  let mimeType = 'image/jpeg';
+  let targetFileName = fileName;
+
+  if (req.file) {
+    fileBuffer = req.file.buffer;
+    mimeType = req.file.mimetype || 'image/jpeg';
+    if (!targetFileName) {
+      targetFileName = req.file.originalname;
+    }
+  } else if (base64Data) {
+    // If base64Data is already an S3 URL, return it without re-uploading
+    if (base64Data.startsWith('http://') || base64Data.startsWith('https://')) {
+      return res.ok('Image already stored in S3', { url: base64Data, key: s3Service.extractKeyFromUrl(base64Data) });
+    }
+
+    let cleanBase64 = base64Data;
+    if (base64Data.startsWith('data:')) {
+      const match = base64Data.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
+      if (match) {
+        mimeType = match[1];
+        cleanBase64 = match[2];
+      } else {
+        cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
+      }
+    }
+    fileBuffer = Buffer.from(cleanBase64, 'base64');
+  } else {
+    return res.fail('No image file or base64Data provided', 400);
+  }
+
+  const result = await s3Service.uploadImageToS3({
+    buffer: fileBuffer,
+    mimeType,
+    projectName: projectName || 'General',
+    styleName: styleName || 'Style',
+    fileName: targetFileName,
+  });
+
+  // If itemId was provided, update the item's AnnotatedImage in database
+  if (itemId) {
+    const parsedItemId = parseId(itemId);
+    if (parsedItemId) {
+      const item = await itemService.getItemById(parsedItemId);
+      if (item) {
+        await itemService.updateItem(parsedItemId, {
+          annotatedImage: JSON.stringify([result.url]),
+        });
+      }
+    }
+  }
+
+  return res.ok('Image uploaded to S3 successfully', result);
+});
+
+const getS3Image = asyncHandler(async (req, res) => {
+  const { key, url } = req.query;
+  let targetKey = key || url;
+
+  if (!targetKey) {
+    return res.status(400).send('Image key or url is required');
+  }
+
+  try {
+    const { buffer, contentType, base64 } = await s3Service.getImageFromS3(targetKey);
+    if (req.query.format === 'base64') {
+      return res.ok('Image retrieved successfully', { base64, contentType, key: targetKey });
+    }
+    res.setHeader('Content-Type', contentType || 'image/jpeg');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    return res.send(buffer);
+  } catch (err) {
+    console.error('[getS3Image] Failed to retrieve image from S3:', err.message);
+    if (url && url.startsWith('http')) {
+      try {
+        const fetchRes = await fetch(url);
+        if (fetchRes.ok) {
+          const ab = await fetchRes.arrayBuffer();
+          res.setHeader('Content-Type', fetchRes.headers.get('content-type') || 'image/jpeg');
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          return res.send(Buffer.from(ab));
+        }
+      } catch (proxyErr) {}
+    }
+    return res.status(500).send(`Failed to retrieve image: ${err.message}`);
+  }
+});
+
+const deleteS3Image = asyncHandler(async (req, res) => {
+  const keyOrUrl = req.query.key || req.query.url || req.body?.key || req.body?.url;
+  if (!keyOrUrl) {
+    return res.fail('Image key or url is required for deletion', 400);
+  }
+
+  const success = await s3Service.deleteImageFromS3(keyOrUrl);
+  return res.ok('Image deleted from S3 successfully', { success, keyOrUrl });
+});
+
+const deleteStyleImages = asyncHandler(async (req, res) => {
+  const projectName = req.query.projectName || req.body?.projectName;
+  const styleName = req.query.styleName || req.body?.styleName;
+
+  if (!projectName || !styleName) {
+    return res.fail('projectName and styleName are required to delete style images', 400);
+  }
+
+  const success = await s3Service.deleteStyleFolderFromS3(projectName, styleName);
+  return res.ok(`All images for style "${styleName}" under project "${projectName}" deleted successfully`, { success });
+});
+
 const proxyImage = asyncHandler(async (req, res) => {
   const imageUrl = req.query.url;
   if (!imageUrl) return res.status(400).send('URL is required');
 
+  // If this is an AWS S3 URL, fetch it using AWS SDK credentials via s3Service
+  if (
+    imageUrl.includes('amazonaws.com') ||
+    imageUrl.includes('buyerapp-image') ||
+    (process.env.AWS_S3_BUCKET && imageUrl.includes(process.env.AWS_S3_BUCKET)) ||
+    (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://'))
+  ) {
+    try {
+      const { buffer, contentType } = await s3Service.getImageFromS3(imageUrl);
+      res.setHeader('Content-Type', contentType || 'image/jpeg');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      return res.send(buffer);
+    } catch (s3Err) {
+      console.warn('[proxyImage] S3 fetch via SDK failed, falling back to fetch:', s3Err.message);
+    }
+  }
+
   try {
     const response = await fetch(imageUrl);
     if (!response.ok) {
-      return res.status(response.status).send(`Failed to fetch image from S3: ${response.statusText}`);
+      return res.status(response.status).send(`Failed to fetch image: ${response.statusText}`);
     }
     const arrayBuffer = await response.arrayBuffer();
     let contentType = response.headers.get('content-type') || 'image/jpeg';
@@ -259,5 +390,9 @@ module.exports = {
   addItemToProject,
   updateProjectItem,
   deleteProjectItem,
+  uploadImage,
+  getS3Image,
+  deleteS3Image,
+  deleteStyleImages,
   proxyImage,
 };

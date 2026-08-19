@@ -1,5 +1,6 @@
-const projectService = require('./project.service');
+﻿const projectService = require('./project.service');
 const itemService = require('./item.service');
+const s3Service = require('./s3Service');
 
 // Combine both sub-services for backward compatibility in existing controllers
 const buyerProjectService = {
@@ -22,5 +23,6 @@ const buyerProjectService = {
 module.exports = {
   buyerProjectService,
   projectService,
-  itemService
+  itemService,
+  s3Service,
 };

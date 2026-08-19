@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const multer = require('multer');
 require('./config/env');
 
 const { requestLogger } = require('./middleware/requestLogger');
@@ -9,14 +10,6 @@ const { errorHandler } = require('./middleware/errorHandler');
 // Initialize express app
 const app = express();
 const PORT = process.env.PORT || 5000;
-
-// Enable CORS â€” restrict to known frontend origin (loaded from environment)
-// app.use(cors({
-//   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
-//   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-//   allowedHeaders: ['Content-Type', 'Authorization'],
-// }));
-
 
 const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
@@ -28,7 +21,7 @@ const allowedOrigins = process.env.CORS_ORIGIN
 app.use(cors({
   origin: "*",
   credentials: true,
-  methods: ["GET","POST","PUT","DELETE","OPTIONS"],
+  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
   allowedHeaders: [
     "Content-Type",
     "Authorization",
@@ -42,7 +35,7 @@ app.use(cors({
   ]
 }));
 
-// Body parsing middleware â€” limit raised to 20 MB to support Base64-encoded annotated images
+// Body parsing middleware – limit raised to 20 MB to support Base64-encoded annotated images
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ limit: '20mb', extended: true }));
 
@@ -52,48 +45,9 @@ app.use(requestLogger);
 // Attach res.ok / res.created / res.fail to every response
 app.use(responseHandler);
 
-// Dynamic CORS Proxy endpoint to mirror Vite's dev-server proxy in production
-// app.all('/cors-proxy/*splat', async (req, res) => {
-//   const targetUrl = req.headers['x-target-url'];
-//   if (!targetUrl) {
-//     return res.status(400).send('Missing x-target-url header');
-//   }
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
-//   try {
-//     const headers = {};
-//     for (const [key, value] of Object.entries(req.headers)) {
-//       if (!['host', 'x-target-url', 'connection', 'origin', 'referer'].includes(key.toLowerCase())) {
-//         headers[key] = value;
-//       }
-//     }
-
-//     const fetchOptions = {
-//       method: req.method,
-//       headers: headers,
-//     };
-
-//     if (req.method !== 'GET' && req.method !== 'HEAD' && req.body) {
-//       fetchOptions.body = typeof req.body === 'object' ? JSON.stringify(req.body) : req.body;
-//     }
-
-//     console.log(`[CORS PROXY] Routing ${req.method} --> ${targetUrl}`);
-//     const response = await fetch(targetUrl, fetchOptions);
-//     const contentType = response.headers.get('content-type');
-//     const status = response.status;
-
-//     const buffer = await response.arrayBuffer();
-    
-//     if (contentType) {
-//       res.setHeader('content-type', contentType);
-//     }
-//     res.status(status).send(Buffer.from(buffer));
-//   } catch (err) {
-//     console.error('[CORS PROXY ERROR]:', err.message);
-//     res.status(500).send(`CORS proxy failed: ${err.message}`);
-//   }
-// });
-
-app.all(['/cors-proxy', '/cors-proxy/*'], async (req, res) => {
+app.all(['/cors-proxy', '/cors-proxy/*'], upload.any(), async (req, res) => {
   console.log("BACKEND CORS PROXY HIT:", req.method, req.originalUrl);
   try {
     let targetUrl = req.headers['x-target-url'];
@@ -113,16 +67,33 @@ app.all(['/cors-proxy', '/cors-proxy/*'], async (req, res) => {
     delete headers['x-target-url'];
     delete headers['content-length'];
 
-    const options = {
+    let options = {
       method: req.method,
       headers
     };
 
     if (req.method !== 'GET' && req.method !== 'HEAD') {
-      options.body =
-        headers['content-type']?.includes('application/x-www-form-urlencoded')
-          ? new URLSearchParams(req.body).toString()
-          : JSON.stringify(req.body);
+      if (req.files && req.files.length > 0) {
+        const form = new FormData();
+        for (const [key, val] of Object.entries(req.body || {})) {
+          form.append(key, val);
+        }
+        for (const file of req.files) {
+          let mimetype = file.mimetype;
+          if (!mimetype || mimetype === 'application/octet-stream') {
+            const ext = (file.originalname || '').split('.').pop()?.toLowerCase();
+            mimetype = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+          }
+          const blob = new Blob([file.buffer], { type: mimetype });
+          form.append(file.fieldname, blob, file.originalname);
+        }
+        delete headers['content-type'];
+        options.body = form;
+      } else if (headers['content-type']?.includes('application/x-www-form-urlencoded')) {
+        options.body = new URLSearchParams(req.body).toString();
+      } else {
+        options.body = typeof req.body === 'object' ? JSON.stringify(req.body) : req.body;
+      }
     }
 
     console.log("Proxying:", targetUrl);
@@ -132,10 +103,6 @@ app.all(['/cors-proxy', '/cors-proxy/*'], async (req, res) => {
     res.status(response.status);
 
     response.headers.forEach((value, key) => {
-      // fetch() automatically decompresses the response body, so we must strip the 
-      // original content-encoding header. Otherwise, the browser will try to decompress
-      // already-uncompressed data and throw ERR_CONTENT_DECODING_FAILED.
-      // We also strip content-length because the uncompressed size will differ.
       if (key.toLowerCase() !== 'content-encoding' && key.toLowerCase() !== 'content-length') {
         res.setHeader(key, value);
       }
@@ -153,7 +120,8 @@ app.all(['/cors-proxy', '/cors-proxy/*'], async (req, res) => {
 
 app.get('/health', (req, res) => {
   res.ok('ok');
-})
+});
+
 // Mount combined API routes
 const apiRoutes = require('./routes');
 app.use('/api', apiRoutes);
@@ -163,10 +131,11 @@ app.use((req, res) => {
   res.fail('Route not found', 404);
 });
 
-// Global error handler â€” must be LAST
+// Global error handler – must be LAST
 app.use(errorHandler);
 
 // Start the server
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
+// restart
