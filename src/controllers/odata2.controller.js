@@ -1,4 +1,4 @@
-const fs = require('fs');
+﻿const fs = require('fs');
 const path = require('path');
 const { getIonapiConfig } = require('../config');
 const { asyncHandler } = require('../utils/asyncHandler');
@@ -33,7 +33,7 @@ const proxyRequest = asyncHandler(async (req, res) => {
     const pathAfterJob = jobIndex !== -1 ? req.originalUrl.substring(jobIndex) : '/job/tasks';
     finalUrl = `${iuBase}/${ti}/${iuUnit}/job/api${pathAfterJob}`;
   } else if (req.originalUrl.includes('/library/')) {
-    // PLM library service — real URL: {iuBase}/{ti}/FASHIONPLM/library/api/library/tools/idgenerator/get
+    // PLM library service â€” real URL: {iuBase}/{ti}/FASHIONPLM/library/api/library/tools/idgenerator/get
     // Frontend calls: /api/library/tools/idgenerator/get (after Express strips /api prefix)
     // req.originalUrl here is e.g. /api/library/tools/idgenerator/get
     const libIndex = req.originalUrl.indexOf('/library/');
@@ -51,8 +51,6 @@ const proxyRequest = asyncHandler(async (req, res) => {
     // e.g. /api/odata2/GenericLookUpAll -> https://.../odata2/api/odata2/GenericLookUpAll
     finalUrl = `${baseUrl}${req.originalUrl}`;
   }
-
-  console.log(`[PROXY] Routing ${req.method} ${req.originalUrl} --> ${finalUrl}`);
 
 
   // Build headers to forward
@@ -88,7 +86,6 @@ const proxyRequest = asyncHandler(async (req, res) => {
 
       tempFilePath = path.join(tempDir, originalObjectName);
       fs.writeFileSync(tempFilePath, buffer);
-      console.log(`[PROXY] Converted base64 image and stored in folder: ${tempFilePath}`);
 
       // Read it back from the folder
       const storedData = fs.readFileSync(tempFilePath);
@@ -96,7 +93,6 @@ const proxyRequest = asyncHandler(async (req, res) => {
 
       // Update the request body with the data taken from the folder
       req.body.objectStream = base64FromFolder;
-      console.log(`[PROXY] Successfully retrieved image from folder to send to PLM.`);
     } catch (saveErr) {
       console.error('[PROXY] Failed to store/retrieve image from folder:', saveErr);
     }
@@ -111,15 +107,9 @@ const proxyRequest = asyncHandler(async (req, res) => {
     // Forward request body for mutation requests
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && req.body) {
       fetchOptions.body = typeof req.body === 'object' ? JSON.stringify(req.body) : req.body;
-      console.log(`[PROXY] Forwarding Body:`, fetchOptions.body);
     }
-
-    //console.log(`[ODATA2 PROXY] Forwarding Headers:`, JSON.stringify(headers));
     const response = await fetch(finalUrl, fetchOptions);
     const data = await response.text();
-
-    // console.log(`[PROXY] Response Status: ${response.status}`);
-    // console.log(`[PROXY] Response Body:`, data);
 
     // Forward response status and headers back to frontend
     res.status(response.status);
@@ -140,7 +130,6 @@ const proxyRequest = asyncHandler(async (req, res) => {
     if (tempFilePath && fs.existsSync(tempFilePath)) {
       try {
         fs.unlinkSync(tempFilePath);
-        console.log(`[PROXY] Cleaned up temporary image file: ${tempFilePath}`);
       } catch (cleanupErr) {
         console.error('[PROXY] Failed to clean up temporary file:', cleanupErr);
       }
@@ -149,3 +138,4 @@ const proxyRequest = asyncHandler(async (req, res) => {
 });
 
 module.exports = { proxyRequest };
+

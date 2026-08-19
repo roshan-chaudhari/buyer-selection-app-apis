@@ -1,4 +1,4 @@
-const { db, toDbSection, parseDate, mapProjectRow, mapItemRow } = require('./common');
+﻿const { db, toDbSection, parseDate, mapProjectRow, mapItemRow } = require('./common');
 
 class ProjectService {
   async getAllProjects() {
@@ -230,7 +230,6 @@ class ProjectService {
   async deleteProject(id, userId, userName) {
     const safeUserId = String(userId || 'unknown').slice(0, 100);
     const safeUserName = String(userName || 'unknown').slice(0, 100);
-    console.log(`[AUDIT] Deleting project ID ${id} by User "${safeUserName}" (ID: ${safeUserId})`);
     const [result] = await db.query('UPDATE buyerprojects SET IsDelete = 1 WHERE Id = ? AND IsDelete = 0', [id]);
     return result.affectedRows > 0;
   }
@@ -253,3 +252,4 @@ class ProjectService {
 }
 
 module.exports = new ProjectService();
+

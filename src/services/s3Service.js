@@ -73,7 +73,6 @@ async function uploadImageToS3({
   );
 
   const url = `https://${BUCKET}.s3.${REGION}.amazonaws.com/${key}`;
-  console.log(`[S3] Uploaded: ${url}`);
 
   return { key, url, fileName: safeFileName };
 }
@@ -121,7 +120,6 @@ async function deleteImageFromS3(keyOrUrl) {
         Key: key,
       })
     );
-    console.log(`[S3] Deleted single image: ${key}`);
     return true;
   } catch (err) {
     console.error(`[S3] Error deleting image ${key}:`, err.message);
@@ -156,9 +154,7 @@ async function deleteStyleFolderFromS3(projectName, styleName) {
         },
       };
       await s3Client.send(new DeleteObjectsCommand(deleteParams));
-      console.log(`[S3] Deleted ${listRes.Contents.length} image(s) for style "${safeStyle}" under project "${safeProject}" (Prefix: ${prefix})`);
     } else {
-      console.log(`[S3] No images found for style "${safeStyle}" under prefix: ${prefix}`);
     }
     return true;
   } catch (err) {
@@ -175,3 +171,4 @@ module.exports = {
   deleteStyleFolderFromS3,
   extractKeyFromUrl,
 };
+
