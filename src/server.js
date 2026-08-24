@@ -18,25 +18,25 @@ const allowedOrigins = process.env.CORS_ORIGIN
     "https://buyersectionapp-bkcrhth7fye0b9et.centralindia-01.azurewebsites.net"
   ];
 
-// app.use(cors(
-//   {
-//     //origin: (origin, callback) => callback(null, origin || true),
-//     // origin: "*",
-//     // credentials: true,
-//     // methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-//     // allowedHeaders: [
-//     //   "Content-Type",
-//     //   "Authorization",
-//     //   "x-target-url",
-//     //   "x-infor-url",
-//     //   "x-infor-user",
-//     //   "x-tenant-id",
-//     //   "x-infor-tenantid",
-//     //   "x-fplm-schema",
-//     //   "x-fplm-client-version"
-//     // ]
-//   }
-// ));
+app.use(cors(
+  {
+    //origin: (origin, callback) => callback(null, origin || true),
+    origin: "*",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-target-url",
+      "x-infor-url",
+      "x-infor-user",
+      "x-tenant-id",
+      "x-infor-tenantid",
+      "x-fplm-schema",
+      "x-fplm-client-version"
+    ]
+  }
+));
 
 // Body parsing middleware � limit raised to 20 MB to support Base64-encoded annotated images
 app.use(express.json({ limit: '20mb' }));
