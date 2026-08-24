@@ -14,14 +14,15 @@ const PORT = process.env.PORT || 5000;
 const allowedOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
   : [
-      "http://localhost:5173",
-      "https://buyersectionapp-bkcrhth7fye0b9et.centralindia-01.azurewebsites.net"
-    ];
+    "http://localhost:5173",
+    "https://buyersectionapp-bkcrhth7fye0b9et.centralindia-01.azurewebsites.net"
+  ];
 
 app.use(cors({
+  //origin: (origin, callback) => callback(null, origin || true),
   origin: "*",
   credentials: true,
-  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: [
     "Content-Type",
     "Authorization",
@@ -35,7 +36,7 @@ app.use(cors({
   ]
 }));
 
-// Body parsing middleware – limit raised to 20 MB to support Base64-encoded annotated images
+// Body parsing middleware ï¿½ limit raised to 20 MB to support Base64-encoded annotated images
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ limit: '20mb', extended: true }));
 
@@ -131,7 +132,7 @@ app.use((req, res) => {
   res.fail('Route not found', 404);
 });
 
-// Global error handler – must be LAST
+// Global error handler ï¿½ must be LAST
 app.use(errorHandler);
 
 // Start the server
