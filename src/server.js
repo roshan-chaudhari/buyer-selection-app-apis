@@ -1,5 +1,5 @@
 const express = require('express');
-const cors = require('cors');
+// const cors = require('cors');
 const multer = require('multer');
 require('./config/env');
 
@@ -11,32 +11,32 @@ const { errorHandler } = require('./middleware/errorHandler');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-const allowedOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
-  : [
-    "http://localhost:5173",
-    "https://buyersectionapp-bkcrhth7fye0b9et.centralindia-01.azurewebsites.net"
-  ];
+// const allowedOrigins = process.env.CORS_ORIGIN
+//   ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+//   : [
+//     "http://localhost:5173",
+//     "https://buyersectionapp-bkcrhth7fye0b9et.centralindia-01.azurewebsites.net"
+//   ];
 
-app.use(cors(
-  {
-    //origin: (origin, callback) => callback(null, origin || true),
-    origin: "*",
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "x-target-url",
-      "x-infor-url",
-      "x-infor-user",
-      "x-tenant-id",
-      "x-infor-tenantid",
-      "x-fplm-schema",
-      "x-fplm-client-version"
-    ]
-  }
-));
+// app.use(cors(
+//   {
+//     //origin: (origin, callback) => callback(null, origin || true),
+//     origin: "*",
+//     credentials: true,
+//     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+//     allowedHeaders: [
+//       "Content-Type",
+//       "Authorization",
+//       "x-target-url",
+//       "x-infor-url",
+//       "x-infor-user",
+//       "x-tenant-id",
+//       "x-infor-tenantid",
+//       "x-fplm-schema",
+//       "x-fplm-client-version"
+//     ]
+//   }
+// ));
 
 // Body parsing middleware � limit raised to 20 MB to support Base64-encoded annotated images
 app.use(express.json({ limit: '20mb' }));
@@ -69,6 +69,8 @@ app.all(['/cors-proxy', '/cors-proxy/*'], upload.any(), async (req, res) => {
     delete headers.connection;
     delete headers['x-target-url'];
     delete headers['content-length'];
+    delete headers['transfer-encoding'];
+    delete headers['upgrade'];
 
     let options = {
       method: req.method,
@@ -105,15 +107,40 @@ app.all(['/cors-proxy', '/cors-proxy/*'], upload.any(), async (req, res) => {
 
     res.status(response.status);
 
+    // response.headers.forEach((value, key) => {
+    //   if (key.toLowerCase() !== 'content-encoding' && key.toLowerCase() !== 'content-length') {
+    //     res.setHeader(key, value);
+    //   }
+    // });
+
+    // const buffer = Buffer.from(await response.arrayBuffer());
+
+    // res.send(buffer);
+
+    const hopByHopHeaders = new Set([
+      'connection',
+      'keep-alive',
+      'proxy-authenticate',
+      'proxy-authorization',
+      'te',
+      'trailer',
+      'transfer-encoding',
+      'upgrade',
+      'content-length',
+      'content-encoding'
+    ]);
+
     response.headers.forEach((value, key) => {
-      if (key.toLowerCase() !== 'content-encoding' && key.toLowerCase() !== 'content-length') {
+      const lowerKey = key.toLowerCase();
+
+      if (!hopByHopHeaders.has(lowerKey)) {
         res.setHeader(key, value);
       }
     });
 
     const buffer = Buffer.from(await response.arrayBuffer());
 
-    res.send(buffer);
+    res.status(response.status).send(buffer);
 
   } catch (err) {
     console.error(err);
@@ -127,6 +154,36 @@ app.get('/health', (req, res) => {
 
 // Mount combined API routes
 const apiRoutes = require('./routes');
+
+const cors = require('cors');
+
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+  : [];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    console.log('CORS blocked:', origin);
+    callback(new Error(`Not allowed by CORS: ${origin}`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'x-target-url',
+    'x-infor-url',
+    'x-infor-user',
+    'x-tenant-id',
+    'x-infor-tenantid',
+    'x-fplm-schema',
+    'x-fplm-client-version'
+  ]
+}));
 app.use('/api', apiRoutes);
 
 // Catch-all route for 404
