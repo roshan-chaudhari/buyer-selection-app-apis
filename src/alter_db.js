@@ -32,6 +32,21 @@ async function alterTable() {
       console.log('IsLocked already exists — skipping.');
     }
 
+    // ── Migration 3: Add NotInPLM flag to buyerprojectitems (idempotent) ────
+    const [notInPlmCols] = await db.query(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'buyerprojectitems' AND COLUMN_NAME = 'NotInPLM'`
+    );
+    if (notInPlmCols.length === 0) {
+      console.log('Adding NotInPLM column to buyerprojectitems...');
+      await db.query(
+        `ALTER TABLE buyerprojectitems ADD COLUMN NotInPLM TINYINT(1) NOT NULL DEFAULT 0 AFTER InternalComments`
+      );
+      console.log('buyerprojectitems.NotInPLM added successfully.');
+    } else {
+      console.log('NotInPLM already exists — skipping.');
+    }
+
     const [desc] = await db.query('DESCRIBE buyerprojects');
     console.log('Current buyerprojects columns:');
     console.table(desc);

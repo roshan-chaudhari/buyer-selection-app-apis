@@ -36,6 +36,7 @@ function mapItemRow(item) {
     sampleDue: item.SampleDue,
     buyerComments: item.BuyerComments || '',
     internalComments: item.InternalComments || '',
+    notInPLM: item.NotInPLM === 1,
     annotatedImage: item.AnnotatedImage || null,
     createdDate: item.CreatedDate
   };

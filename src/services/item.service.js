@@ -3,7 +3,7 @@ const { db, parseDate, mapItemRow } = require('./common');
 class ItemService {
   async getItemsByProjectId(projectId) {
     const query = `
-      SELECT Id, ProjectId, StyleId, ColorId, ColorStatusId, StyleMaterialNumber, StyleMaterialName, ItemType, Colorway, ColorwayStatus, SelectionCondition, SampleDue, BuyerComments, InternalComments, AnnotatedImage, CreatedDate 
+      SELECT Id, ProjectId, StyleId, ColorId, ColorStatusId, StyleMaterialNumber, StyleMaterialName, ItemType, Colorway, ColorwayStatus, SelectionCondition, SampleDue, BuyerComments, InternalComments, NotInPLM, AnnotatedImage, CreatedDate 
       FROM buyerprojectitems 
       WHERE ProjectId = ?;
     `;
@@ -21,7 +21,7 @@ class ItemService {
   }
 
   async addItemToProject(projectId, itemData) {
-    const { styleId, colorId, colorStatusId, styleMaterialNumber, styleMaterialName, itemType, colorway, colorwayStatus, selectionCondition, sampleDue, buyerComments, internalComments } = itemData;
+    const { styleId, colorId, colorStatusId, styleMaterialNumber, styleMaterialName, itemType, colorway, colorwayStatus, selectionCondition, sampleDue, buyerComments, internalComments, notInPLM } = itemData;
     const connection = await db.getConnection();
     try {
       await connection.beginTransaction();
@@ -47,8 +47,8 @@ class ItemService {
 
       const [result] = await connection.query(
         `INSERT INTO buyerprojectitems 
-         (ProjectId, StyleId, ColorId, ColorStatusId, StyleMaterialNumber, StyleMaterialName, ItemType, Colorway, ColorwayStatus, SelectionCondition, SampleDue, BuyerComments, InternalComments, AnnotatedImage) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (ProjectId, StyleId, ColorId, ColorStatusId, StyleMaterialNumber, StyleMaterialName, ItemType, Colorway, ColorwayStatus, SelectionCondition, SampleDue, BuyerComments, InternalComments, NotInPLM, AnnotatedImage) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           projectId,
           styleId || 0,
@@ -63,6 +63,7 @@ class ItemService {
           parseDate(sampleDue),
           buyerComments || null,
           internalComments || null,
+          notInPLM ? 1 : 0,
           itemData.annotatedImage || null
         ]
       );
@@ -79,7 +80,7 @@ class ItemService {
       await connection.commit();
 
       const [inserted] = await db.query(
-        `SELECT Id, ProjectId, StyleId, ColorId, ColorStatusId, StyleMaterialNumber, StyleMaterialName, ItemType, Colorway, ColorwayStatus, SelectionCondition, SampleDue, BuyerComments, InternalComments, AnnotatedImage, CreatedDate
+        `SELECT Id, ProjectId, StyleId, ColorId, ColorStatusId, StyleMaterialNumber, StyleMaterialName, ItemType, Colorway, ColorwayStatus, SelectionCondition, SampleDue, BuyerComments, InternalComments, NotInPLM, AnnotatedImage, CreatedDate
          FROM buyerprojectitems WHERE Id = ?`,
         [itemId]
       );
@@ -99,13 +100,14 @@ class ItemService {
     try {
       await connection.beginTransaction();
 
-      const [itemRows] = await connection.query('SELECT ProjectId, StyleMaterialNumber, CreatedDate FROM buyerprojectitems WHERE Id = ?', [itemId]);
+      const [itemRows] = await connection.query('SELECT ProjectId, StyleMaterialNumber, CreatedDate, NotInPLM FROM buyerprojectitems WHERE Id = ?', [itemId]);
       if (itemRows.length === 0) {
         await connection.rollback();
         return null;
       }
       const projectId = itemRows[0].ProjectId;
       const currentStyleNumber = itemRows[0].StyleMaterialNumber;
+      const currentNotInPlm = itemRows[0].NotInPLM ? 1 : 0;
 
       // Lock parent project row to avoid deadlocks on concurrent writes
       await connection.query('SELECT Id FROM buyerprojects WHERE Id = ? FOR UPDATE', [projectId]);
@@ -199,8 +201,8 @@ class ItemService {
           } else {
             await connection.query(
               `INSERT INTO buyerprojectitems 
-               (ProjectId, StyleId, ColorId, ColorStatusId, StyleMaterialNumber, StyleMaterialName, Colorway, ColorwayStatus, SelectionCondition, SampleDue, BuyerComments, InternalComments, AnnotatedImage) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+               (ProjectId, StyleId, ColorId, ColorStatusId, StyleMaterialNumber, StyleMaterialName, Colorway, ColorwayStatus, SelectionCondition, SampleDue, BuyerComments, InternalComments, NotInPLM, AnnotatedImage) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
               [
                 projectId,
                 styleId || 0,
@@ -214,6 +216,7 @@ class ItemService {
                 parseDate(sampleDue),
                 '',
                 '',
+                currentNotInPlm,
                 annotatedImage !== undefined ? annotatedImage : null
               ]
             );
