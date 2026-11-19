@@ -1,4 +1,4 @@
-﻿const {
+const {
   PutObjectCommand,
   GetObjectCommand,
   DeleteObjectCommand,
@@ -25,6 +25,28 @@ function extractKeyFromUrl(keyOrUrl) {
     }
   }
   return str;
+}
+
+function extractS3Urls(annotatedImage) {
+  if (!annotatedImage) return [];
+  const urls = [];
+  const raw = String(annotatedImage).trim();
+  if (raw.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        parsed.forEach((x) => {
+          const u = typeof x === 'object' ? x?.annotated || x?.original : String(x || '');
+          if (u && (String(u).includes('amazonaws.com') || String(u).includes('buyerapp-image') || (process.env.AWS_S3_BUCKET && String(u).includes(process.env.AWS_S3_BUCKET)))) {
+            urls.push(String(u));
+          }
+        });
+      }
+    } catch (e) {}
+  } else if (raw.includes('amazonaws.com') || raw.includes('buyerapp-image') || (process.env.AWS_S3_BUCKET && raw.includes(process.env.AWS_S3_BUCKET))) {
+    urls.push(raw);
+  }
+  return urls;
 }
 
 /**
@@ -106,10 +128,25 @@ async function getImageFromS3(keyOrUrl) {
   };
 }
 
+function isPlmDefaultImage(keyOrUrl) {
+  if (!keyOrUrl) return false;
+  const str = String(keyOrUrl).toLowerCase();
+  return str.includes('_default_') || str.includes('-default-');
+}
+
 /**
  * Deletes a single image from AWS S3.
+ * The PLM default image can NEVER be deleted from S3; only annotations can be.
  */
 async function deleteImageFromS3(keyOrUrl) {
+  if (!keyOrUrl) return false;
+
+  // Protect PLM default image from being deleted from S3
+  if (isPlmDefaultImage(keyOrUrl)) {
+    console.log(`[S3] Protected PLM default image from deletion: ${keyOrUrl}`);
+    return false;
+  }
+
   const key = extractKeyFromUrl(keyOrUrl);
   if (!key) return false;
 
@@ -128,6 +165,41 @@ async function deleteImageFromS3(keyOrUrl) {
 }
 
 /**
+ * Deletes all objects with a given S3 prefix, handling pagination if > 1000 items.
+ */
+async function deletePrefixFromS3(prefix) {
+  if (!prefix) return false;
+  try {
+    let continuationToken = undefined;
+    do {
+      const listParams = {
+        Bucket: BUCKET,
+        Prefix: prefix,
+        ContinuationToken: continuationToken,
+      };
+      const listRes = await s3Client.send(new ListObjectsV2Command(listParams));
+
+      if (listRes.Contents && listRes.Contents.length > 0) {
+        const deleteParams = {
+          Bucket: BUCKET,
+          Delete: {
+            Objects: listRes.Contents.map((obj) => ({ Key: obj.Key })),
+          },
+        };
+        await s3Client.send(new DeleteObjectsCommand(deleteParams));
+      }
+
+      continuationToken = listRes.IsTruncated ? listRes.NextContinuationToken : undefined;
+    } while (continuationToken);
+
+    return true;
+  } catch (err) {
+    console.error(`[S3] Error deleting prefix ${prefix}:`, err.message);
+    return false;
+  }
+}
+
+/**
  * Deletes all images belonging to a specific style under a project.
  * Prefix: buyerapp-image/{projectName}/{styleName}/
  */
@@ -138,29 +210,21 @@ async function deleteStyleFolderFromS3(projectName, styleName) {
   const safeStyle = sanitize(styleName);
   const prefix = `buyerapp-image/${safeProject}/${safeStyle}/`;
 
-  try {
-    const listRes = await s3Client.send(
-      new ListObjectsV2Command({
-        Bucket: BUCKET,
-        Prefix: prefix,
-      })
-    );
+  return await deletePrefixFromS3(prefix);
+}
 
-    if (listRes.Contents && listRes.Contents.length > 0) {
-      const deleteParams = {
-        Bucket: BUCKET,
-        Delete: {
-          Objects: listRes.Contents.map((obj) => ({ Key: obj.Key })),
-        },
-      };
-      await s3Client.send(new DeleteObjectsCommand(deleteParams));
-    } else {
-    }
-    return true;
-  } catch (err) {
-    console.error(`[S3] Error deleting style folder prefix ${prefix}:`, err.message);
-    return false;
-  }
+/**
+ * Deletes all images belonging to an entire project from AWS S3.
+ * Prefix: buyerapp-image/{projectName}/
+ */
+async function deleteProjectFolderFromS3(projectName) {
+  if (!projectName) return false;
+
+  const safeProject = sanitize(projectName);
+  const prefix = `buyerapp-image/${safeProject}/`;
+
+  console.log(`[S3] Deleting all project images under prefix: ${prefix}`);
+  return await deletePrefixFromS3(prefix);
 }
 
 module.exports = {
@@ -169,6 +233,9 @@ module.exports = {
   getImageFromS3,
   deleteImageFromS3,
   deleteStyleFolderFromS3,
+  deleteProjectFolderFromS3,
   extractKeyFromUrl,
+  extractS3Urls,
+  isPlmDefaultImage,
 };
 

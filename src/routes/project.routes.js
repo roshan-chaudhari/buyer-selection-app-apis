@@ -1,4 +1,4 @@
-﻿const { Router } = require('express');
+const { Router } = require('express');
 const projectController = require('../controllers/project.controller');
 const { upload } = require('../middleware/upload');
 
@@ -24,6 +24,10 @@ router.post('/delete-image', projectController.deleteS3Image);
 // S3 Style folder batch delete endpoint (when a style is deleted from project)
 router.delete('/style-images', projectController.deleteStyleImages);
 router.post('/delete-style-images', projectController.deleteStyleImages);
+
+// S3 Project folder batch delete endpoint (when a project is deleted)
+router.delete('/project-images', projectController.deleteProjectImages);
+router.post('/delete-project-images', projectController.deleteProjectImages);
 
 // PROXY image request
 router.get('/proxy-image', projectController.proxyImage);

@@ -30,7 +30,7 @@ function mapItemRow(item) {
     styleMaterialNumber: item.StyleMaterialNumber || '',
     styleMaterialName: item.StyleMaterialName || '',
     itemType: item.ItemType || 'Style',
-    colorway: item.Colorway || '',
+    colorway: (item.Colorway && item.Colorway !== 'null' && item.Colorway !== 'undefined') ? item.Colorway : '',
     colorwayStatus: item.ColorwayStatus || '',
     selectionCondition: item.SelectionCondition || '',
     sampleDue: item.SampleDue,
@@ -73,3 +73,4 @@ module.exports = {
   mapItemRow,
   mapProjectRow
 };
+

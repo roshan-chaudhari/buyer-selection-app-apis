@@ -1,11 +1,12 @@
 const { db, parseDate, mapItemRow } = require('./common');
+const s3Service = require('./s3Service');
 
 class ItemService {
   async getItemsByProjectId(projectId) {
     const query = `
       SELECT Id, ProjectId, StyleId, ColorId, ColorStatusId, StyleMaterialNumber, StyleMaterialName, ItemType, Colorway, ColorwayStatus, SelectionCondition, SampleDue, BuyerComments, InternalComments, NotInPLM, AnnotatedImage, CreatedDate 
       FROM buyerprojectitems 
-      WHERE ProjectId = ?;
+      WHERE ProjectId = ? ORDER BY StyleMaterialNumber ASC, Id ASC;
     `;
     const [rows] = await db.query(query, [projectId]);
     return rows.map(mapItemRow);
@@ -13,11 +14,76 @@ class ItemService {
 
   async getItemById(itemId) {
     const [rows] = await db.query(
-      `SELECT Id, ProjectId FROM buyerprojectitems WHERE Id = ?`,
+      `SELECT Id, ProjectId, StyleMaterialNumber, AnnotatedImage FROM buyerprojectitems WHERE Id = ?`,
       [itemId]
     );
     if (rows.length === 0) return null;
-    return { id: rows[0].Id, projectId: rows[0].ProjectId };
+    return {
+      id: rows[0].Id,
+      projectId: rows[0].ProjectId,
+      styleMaterialNumber: rows[0].StyleMaterialNumber,
+      annotatedImage: rows[0].AnnotatedImage
+    };
+  }
+
+  async updateItemAnnotatedImage(itemId, annotatedImage) {
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      const [itemRows] = await connection.query(
+        'SELECT ProjectId, StyleMaterialNumber, AnnotatedImage FROM buyerprojectitems WHERE Id = ?',
+        [itemId]
+      );
+      if (itemRows.length === 0) {
+        await connection.rollback();
+        return null;
+      }
+      const { ProjectId, StyleMaterialNumber, AnnotatedImage: oldAnnotatedImage } = itemRows[0];
+
+      // Lock parent project row
+      await connection.query('SELECT Id FROM buyerprojects WHERE Id = ? FOR UPDATE', [ProjectId]);
+
+      const newAnnotatedImage = annotatedImage !== undefined ? annotatedImage : null;
+
+      // Update AnnotatedImage for this item and all sibling items with same StyleMaterialNumber in project
+      if (StyleMaterialNumber) {
+        await connection.query(
+          'UPDATE buyerprojectitems SET AnnotatedImage = ? WHERE ProjectId = ? AND StyleMaterialNumber = ?',
+          [newAnnotatedImage, ProjectId, StyleMaterialNumber]
+        );
+      } else {
+        await connection.query(
+          'UPDATE buyerprojectitems SET AnnotatedImage = ? WHERE Id = ?',
+          [newAnnotatedImage, itemId]
+        );
+      }
+
+      await connection.query('UPDATE buyerprojects SET LastUpdated = CURRENT_TIMESTAMP WHERE Id = ?', [ProjectId]);
+
+      await connection.commit();
+
+      // Clean up any removed S3 images
+      if (oldAnnotatedImage) {
+        try {
+          const s3Service = require('./s3Service');
+          const oldUrls = s3Service.extractS3Urls(oldAnnotatedImage);
+          const newUrls = new Set(s3Service.extractS3Urls(newAnnotatedImage));
+          for (const oldUrl of oldUrls) {
+            if (!newUrls.has(oldUrl)) {
+              s3Service.deleteImageFromS3(oldUrl).catch(() => {});
+            }
+          }
+        } catch (e) {}
+      }
+
+      return true;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 
   async addItemToProject(projectId, itemData) {
@@ -95,19 +161,20 @@ class ItemService {
 
   async updateItem(itemId, itemData) {
     const { styleId, colorId, colorStatusId, styleMaterialNumber, styleMaterialName, colorway, colorwayStatus, selectionCondition, sampleDue, buyerComments, internalComments, annotatedImage, colorwaysWithIds } = itemData;
-    
+
     const connection = await db.getConnection();
     try {
       await connection.beginTransaction();
 
-      const [itemRows] = await connection.query('SELECT ProjectId, StyleMaterialNumber, CreatedDate, NotInPLM FROM buyerprojectitems WHERE Id = ?', [itemId]);
+      const [itemRows] = await connection.query('SELECT * FROM buyerprojectitems WHERE Id = ?', [itemId]);
       if (itemRows.length === 0) {
         await connection.rollback();
         return null;
       }
-      const projectId = itemRows[0].ProjectId;
-      const currentStyleNumber = itemRows[0].StyleMaterialNumber;
-      const currentNotInPlm = itemRows[0].NotInPLM ? 1 : 0;
+      const existingItem = itemRows[0];
+      const projectId = existingItem.ProjectId;
+      const currentStyleNumber = existingItem.StyleMaterialNumber;
+      const currentNotInPlm = existingItem.NotInPLM ? 1 : 0;
 
       // Lock parent project row to avoid deadlocks on concurrent writes
       await connection.query('SELECT Id FROM buyerprojects WHERE Id = ? FOR UPDATE', [projectId]);
@@ -148,7 +215,7 @@ class ItemService {
 
         const primaryRow = existingRows.find(r => r.Id === Number(itemId));
         const remainingColors = [...colorsToSync];
-        
+
         if (primaryRow && remainingColors.length > 0) {
           const firstColor = remainingColors.shift();
           firstColorId = colorIdMap.get((firstColor || '').toLowerCase()) || colorId || 0;
@@ -229,46 +296,69 @@ class ItemService {
           }
         }
       } else {
-        // Simple update: ONLY update the single colorway row by its unique ID
+        // Simple update: ONLY update the single colorway row by its unique ID, preserving existing values for omitted fields
         await connection.query(
           `UPDATE buyerprojectitems 
            SET StyleId = ?, ColorId = ?, ColorStatusId = ?, StyleMaterialNumber = ?, StyleMaterialName = ?, Colorway = ?, ColorwayStatus = ?, SelectionCondition = ?, SampleDue = ?, BuyerComments = ?, InternalComments = ?, AnnotatedImage = ? 
            WHERE Id = ?`,
           [
-            styleId || 0,
-            colorId || 0,
-            colorStatusId || 0,
-            styleMaterialNumber || null,
-            styleMaterialName || null,
-            colorway || null,
-            colorwayStatus || null,
-            selectionCondition || null,
-            parseDate(sampleDue),
-            buyerComments || null,
-            internalComments || null,
-            annotatedImage !== undefined ? annotatedImage : null,
+            styleId !== undefined ? (styleId || 0) : existingItem.StyleId,
+            colorId !== undefined ? (colorId || 0) : existingItem.ColorId,
+            colorStatusId !== undefined ? (colorStatusId || 0) : existingItem.ColorStatusId,
+            styleMaterialNumber !== undefined ? (styleMaterialNumber || null) : existingItem.StyleMaterialNumber,
+            styleMaterialName !== undefined ? (styleMaterialName || null) : existingItem.StyleMaterialName,
+            colorway !== undefined ? (colorway || null) : existingItem.Colorway,
+            colorwayStatus !== undefined ? (colorwayStatus || null) : existingItem.ColorwayStatus,
+            selectionCondition !== undefined ? (selectionCondition || null) : existingItem.SelectionCondition,
+            sampleDue !== undefined ? parseDate(sampleDue) : existingItem.SampleDue,
+            buyerComments !== undefined ? (buyerComments || null) : existingItem.BuyerComments,
+            internalComments !== undefined ? (internalComments || null) : existingItem.InternalComments,
+            annotatedImage !== undefined ? annotatedImage : existingItem.AnnotatedImage,
             itemId
           ]
         );
       }
 
       // Synchronize style-level properties for any remaining sibling items
-      await connection.query(
-        `UPDATE buyerprojectitems 
-         SET StyleMaterialName = ?, SelectionCondition = ?, AnnotatedImage = ? 
-         WHERE ProjectId = ? AND StyleMaterialNumber = ?`,
-        [
-          styleMaterialName || null,
-          selectionCondition || null,
-          annotatedImage !== undefined ? annotatedImage : null,
-          projectId,
-          styleMaterialNumber || currentStyleNumber
-        ]
-      );
+      const updateFields = [];
+      const updateParams = [];
+      if (styleMaterialName !== undefined) {
+        updateFields.push('StyleMaterialName = ?');
+        updateParams.push(styleMaterialName || null);
+      }
+      if (selectionCondition !== undefined) {
+        updateFields.push('SelectionCondition = ?');
+        updateParams.push(selectionCondition || null);
+      }
+      if (annotatedImage !== undefined) {
+        updateFields.push('AnnotatedImage = ?');
+        updateParams.push(annotatedImage);
+      }
+      if (updateFields.length > 0) {
+        updateParams.push(projectId, styleMaterialNumber || currentStyleNumber);
+        await connection.query(
+          `UPDATE buyerprojectitems SET ${updateFields.join(', ')} WHERE ProjectId = ? AND StyleMaterialNumber = ?`,
+          updateParams
+        );
+      }
 
       await connection.query('UPDATE buyerprojects SET LastUpdated = CURRENT_TIMESTAMP WHERE Id = ?', [projectId]);
 
       await connection.commit();
+
+      // Clean up any removed S3 images if annotatedImage changed
+      if (annotatedImage !== undefined && existingItem.AnnotatedImage) {
+        try {
+          const s3Service = require('./s3Service');
+          const oldUrls = s3Service.extractS3Urls(existingItem.AnnotatedImage);
+          const newUrls = new Set(s3Service.extractS3Urls(annotatedImage));
+          for (const oldUrl of oldUrls) {
+            if (!newUrls.has(oldUrl)) {
+              s3Service.deleteImageFromS3(oldUrl).catch(() => {});
+            }
+          }
+        } catch (e) {}
+      }
 
       return {
         id: Number(itemId),
@@ -296,15 +386,30 @@ class ItemService {
 
   async deleteItem(itemId) {
     const connection = await db.getConnection();
+    let cleanupS3Info = null;
+
     try {
       await connection.beginTransaction();
 
-      const [rows] = await connection.query('SELECT ProjectId FROM buyerprojectitems WHERE Id = ?', [itemId]);
+      const [rows] = await connection.query(
+        `SELECT i.ProjectId, i.StyleMaterialNumber, i.AnnotatedImage, p.ProjectName 
+         FROM buyerprojectitems i 
+         LEFT JOIN buyerprojects p ON i.ProjectId = p.Id 
+         WHERE i.Id = ?`,
+        [itemId]
+      );
       if (rows.length === 0) { await connection.rollback(); return false; }
-      const projectId = rows[0].ProjectId;
+      
+      const { ProjectId: projectId, StyleMaterialNumber: styleMaterialNumber, AnnotatedImage: annotatedImage, ProjectName: projectName } = rows[0];
 
       // Lock parent project row to avoid deadlocks on concurrent writes
       await connection.query('SELECT Id FROM buyerprojects WHERE Id = ? FOR UPDATE', [projectId]);
+
+      // Check if there are other sibling colorway items for this style in the project
+      const [siblings] = await connection.query(
+        'SELECT Id, AnnotatedImage FROM buyerprojectitems WHERE ProjectId = ? AND StyleMaterialNumber = ? AND Id != ?',
+        [projectId, styleMaterialNumber, itemId]
+      );
 
       const [result] = await connection.query('DELETE FROM buyerprojectitems WHERE Id = ?', [itemId]);
       if (result.affectedRows === 0) { await connection.rollback(); return false; }
@@ -317,14 +422,49 @@ class ItemService {
       );
 
       await connection.commit();
-      return true;
+
+      cleanupS3Info = {
+        projectName,
+        styleMaterialNumber,
+        annotatedImage,
+        isLastOfStyle: siblings.length === 0,
+        siblings,
+      };
     } catch (error) {
       await connection.rollback();
       throw error;
     } finally {
       connection.release();
     }
+
+    // Clean up S3 files after DB delete succeeds
+    if (cleanupS3Info) {
+      try {
+        const { projectName, styleMaterialNumber, annotatedImage, isLastOfStyle, siblings } = cleanupS3Info;
+        if (isLastOfStyle && projectName && styleMaterialNumber) {
+          // If no remaining colorways exist for this style in this project, delete the entire style folder from S3
+          await s3Service.deleteStyleFolderFromS3(projectName, styleMaterialNumber);
+        } else if (annotatedImage) {
+          // If other colorways exist, only delete annotation images unique to this deleted item
+          const itemUrls = s3Service.extractS3Urls(annotatedImage);
+          const siblingUrls = new Set();
+          siblings.forEach((s) => {
+            s3Service.extractS3Urls(s.AnnotatedImage).forEach((u) => siblingUrls.add(u));
+          });
+          for (const u of itemUrls) {
+            if (!siblingUrls.has(u) && !s3Service.isPlmDefaultImage(u)) {
+              await s3Service.deleteImageFromS3(u);
+            }
+          }
+        }
+      } catch (s3Err) {
+        console.error(`[itemService] Failed to clean up S3 images for deleted item ${itemId}:`, s3Err.message);
+      }
+    }
+
+    return true;
   }
 }
 
 module.exports = new ItemService();
+

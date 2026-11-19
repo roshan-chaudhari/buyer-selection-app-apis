@@ -1,4 +1,4 @@
-﻿const { projectService, itemService, s3Service } = require('../services');
+const { projectService, itemService, s3Service } = require('../services');
 const { asyncHandler } = require('../utils/asyncHandler');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -127,8 +127,21 @@ const deleteProject = asyncHandler(async (req, res) => {
 
   const { userId, userName } = req.query;
 
+  // Fetch project first to retrieve ProjectName for S3 cleanup
+  const existingProject = await projectService.getProjectById(id);
+  const projectName = existingProject?.ProjectName || existingProject?.projectName;
+
   const success = await projectService.deleteProject(id, userId, userName);
   if (!success) return res.fail(`Project with ID ${id} not found`, 404);
+
+  // If we delete the project, delete all its images from S3
+  if (projectName) {
+    try {
+      await s3Service.deleteProjectFolderFromS3(projectName);
+    } catch (s3Err) {
+      console.error(`[deleteProject] Error deleting project folder from S3 for "${projectName}":`, s3Err.message);
+    }
+  }
 
   return res.ok('Project deleted successfully');
 });
@@ -255,12 +268,10 @@ const uploadImage = asyncHandler(async (req, res) => {
   if (itemId) {
     const parsedItemId = parseId(itemId);
     if (parsedItemId) {
-      const item = await itemService.getItemById(parsedItemId);
-      if (item) {
-        await itemService.updateItem(parsedItemId, {
-          annotatedImage: JSON.stringify([result.url]),
-        });
-      }
+      await itemService.updateItemAnnotatedImage(
+        parsedItemId,
+        JSON.stringify([result.url])
+      );
     }
   }
 
@@ -302,11 +313,20 @@ const getS3Image = asyncHandler(async (req, res) => {
 
 const deleteS3Image = asyncHandler(async (req, res) => {
   const keyOrUrl = req.query.key || req.query.url || req.body?.key || req.body?.url;
+  const itemId = req.query.itemId || req.body?.itemId;
   if (!keyOrUrl) {
     return res.fail('Image key or url is required for deletion', 400);
   }
 
   const success = await s3Service.deleteImageFromS3(keyOrUrl);
+
+  if (itemId) {
+    const parsedItemId = parseId(itemId);
+    if (parsedItemId) {
+      await itemService.updateItemAnnotatedImage(parsedItemId, '[]');
+    }
+  }
+
   return res.ok('Image deleted from S3 successfully', { success, keyOrUrl });
 });
 
@@ -320,6 +340,17 @@ const deleteStyleImages = asyncHandler(async (req, res) => {
 
   const success = await s3Service.deleteStyleFolderFromS3(projectName, styleName);
   return res.ok(`All images for style "${styleName}" under project "${projectName}" deleted successfully`, { success });
+});
+
+const deleteProjectImages = asyncHandler(async (req, res) => {
+  const projectName = req.query.projectName || req.body?.projectName;
+
+  if (!projectName) {
+    return res.fail('projectName is required to delete project images', 400);
+  }
+
+  const success = await s3Service.deleteProjectFolderFromS3(projectName);
+  return res.ok(`All images for project "${projectName}" deleted from S3 successfully`, { success });
 });
 
 const proxyImage = asyncHandler(async (req, res) => {
@@ -394,5 +425,6 @@ module.exports = {
   getS3Image,
   deleteS3Image,
   deleteStyleImages,
+  deleteProjectImages,
   proxyImage,
 };
